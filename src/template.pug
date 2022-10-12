@@ -1,0 +1,21 @@
+doctype html
+html(lang="en")
+	head
+		meta(charset="UTF-8")
+		meta(http-equiv="Content-Type", content="text/html; charset=UTF-8")
+		title Directory listing for #{directory}
+		link(rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgo=")
+	body
+		h1 Directory listing for #{directory}
+		hr
+		ul
+			if files.length
+				each file in files
+					li
+						if directory.endsWith("/")
+							a(href=(directory + file))= file
+						else
+							a(href=(directory + "/" + encodeURIComponent(file)))= file
+			else
+				li No files in directory
+		hr
