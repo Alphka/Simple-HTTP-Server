@@ -99,17 +99,18 @@ program.action(async (port, { directory }) => {
 		}else directory = process.cwd()
 
 		app.get("*", (request, response) => {
+			const { ip, url: pathname, method, httpVersion } = request
+			const userAgent = request.header("user-agent")
+			const range = request.header("range")
+			const date = GetFormattedDate()
+
 			/**
 			 * @param {number} status Response status
 			 * @param {string} [error] Request error message
 			 * @param {string | boolean} [range] Requested range
 			 */
 			function LogMessage(status, error, range){
-				const { ip, url, method, httpVersion, headers } = request
-				const { "user-agent": userAgent } = headers
-				const date = GetFormattedDate()
-
-				let message = `${ip} - ${date} - ${userAgent} - "${method} ${url} HTTP/${httpVersion}" ${status ?? null}`
+				let message = `${ip} - ${date} - ${userAgent} - "${method} ${pathname} HTTP/${httpVersion}" ${status ?? null}`
 
 				if(range && typeof range === "string") message += ` Range: ${range}`
 
@@ -123,7 +124,7 @@ program.action(async (port, { directory }) => {
 				console.log(message)
 			}
 
-			const url = new URL(request.url, `http://${request.header("host")}`)
+			const url = new URL(pathname, `http://${request.header("host")}`)
 			const urlPath = decodeURIComponent(url.pathname).replace(/\/+$/, "/")
 			const path = join(directory, urlPath.substring(1))
 
@@ -145,7 +146,7 @@ program.action(async (port, { directory }) => {
 				const isStream = mimeType === "application/octet-stream"
 
 				response.sendFile(path, {
-					acceptRanges: stats.size > 3 * 2**20,
+					acceptRanges: stats.size > 3145728, // 3 MegaBytes
 					lastModified: false,
 					cacheControl: false,
 					dotfiles: "allow",
@@ -159,7 +160,7 @@ program.action(async (port, { directory }) => {
 				})
 			}
 
-			LogMessage(response.statusCode || 200, undefined, isDirectory && request.header("range")?.split?.("=").pop())
+			LogMessage(response.statusCode || 200, undefined, !isDirectory && range?.split?.("=").pop())
 		})
 
 		app.use(/** @type {express.ErrorRequestHandler} */ (error, request, response, next) => {
