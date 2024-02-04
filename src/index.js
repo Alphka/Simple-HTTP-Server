@@ -90,7 +90,12 @@ program.action(async (port, { directory }) => {
 
 		if(directory){
 			directory = isAbsolute(directory) ? normalize(directory) : resolve(process.cwd(), directory)
-			if(!existsSync(directory)) return program.error("Directory doesn't exist")
+			directory = directory.replace(/"$/, "")
+
+			if(!existsSync(directory)){
+				directory = directory.replace(/`\[/g, "[").replace(/`]/g, "]")
+				if(!existsSync(directory)) return program.error("Directory doesn't exist: " + directory)
+			}
 		}else directory = process.cwd()
 
 		app.get("*", (request, response) => {
@@ -100,10 +105,11 @@ program.action(async (port, { directory }) => {
 			 * @param {string | boolean} [range] Requested range
 			 */
 			function LogMessage(status, error, range){
-				const { ip, url, method, httpVersion } = request
+				const { ip, url, method, httpVersion, headers } = request
+				const { "user-agent": userAgent } = headers
 				const date = GetFormattedDate()
 
-				let message = `${ip} - ${date} - "${method} ${url} HTTP/${httpVersion}" ${status ?? null}`
+				let message = `${ip} - ${date} - ${userAgent} - "${method} ${url} HTTP/${httpVersion}" ${status ?? null}`
 
 				if(range && typeof range === "string") message += ` Range: ${range}`
 
