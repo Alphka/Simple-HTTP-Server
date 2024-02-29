@@ -110,7 +110,8 @@ program.action(async (port, { directory }) => {
 			 * @param {string | boolean} [range] Requested range
 			 */
 			function LogMessage(status, error, range){
-				let message = `${ip} - ${date} - ${userAgent} - "${method} ${pathname} HTTP/${httpVersion}" ${status ?? null}`
+				status = status || 500
+				let message = `${ip} - ${date} - ${userAgent} - "${method} ${pathname} HTTP/${httpVersion}" ${status}`
 
 				if(range && typeof range === "string") message += ` Range: ${range}`
 
@@ -170,10 +171,12 @@ program.action(async (port, { directory }) => {
 			 * @param {string | boolean} [range] Requested range
 			 */
 			function LogMessage(status, error, range){
+				status = status || 500
+
 				const { ip, url, method, httpVersion } = request
 				const date = GetFormattedDate()
 
-				let message = `${ip} - ${date} - "${method} ${url} HTTP/${httpVersion}" ${status ?? null}`
+				let message = `${ip} - ${date} - "${method} ${url} HTTP/${httpVersion}" ${status}`
 
 				if(range && typeof range === "string") message += ` Range: ${range}`
 
