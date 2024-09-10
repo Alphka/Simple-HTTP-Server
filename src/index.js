@@ -1,12 +1,18 @@
 #!/usr/bin/env node
 
-const { join, normalize, basename, parse, isAbsolute, resolve } = require("path")
-const { name: _name, version, description } = require("../package.json")
-const { readdirSync, existsSync, statSync } = require("fs")
-const { program } = require("commander")
-const { URL } = require("url")
-const express = require("express")
-const mime = require("mime")
+import { join, normalize, basename, parse, isAbsolute, resolve, dirname } from "path"
+import { readdirSync, existsSync, statSync, readFileSync } from "fs"
+import { fileURLToPath } from "url"
+import { program } from "commander"
+import express from "express"
+import mime from "mime"
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+const root = join(__dirname, "..")
+const cwd = process.cwd()
+
+const packageInfo = /** @type {import("../package.json")} */ (JSON.parse(readFileSync(join(root, "package.json"), "utf8")))
 
 const name = "Simple HTTP Server"
 const template = join(__dirname, "template.pug")
@@ -18,8 +24,8 @@ app.disable("x-powered-by")
 app.disable("etag")
 
 program.name(name)
-program.description(description)
-program.version(version)
+program.description(packageInfo.description)
+program.version(packageInfo.version)
 
 function isNumber(number){
 	if(number === 0) return true
@@ -53,7 +59,7 @@ function GetFormattedDate(value){
 }
 
 /** @param {string} path */
-function MimeType(path){
+function GetMimeType(path){
 	const { ext, name } = parse(path)
 	const text = "text/plain; charset=utf-8"
 	const stream = "application/octet-stream"
@@ -71,32 +77,32 @@ function MimeType(path){
 
 		if(existsSync(path)){
 			const { size } = statSync(path)
-			return size >= 2**20 ? mime.lookup(path) : typescript
+			return size >= 2 ** 20 ? mime.getType(path) || stream : typescript
 		}else return typescript
 	}
 
-	const suggested = mime.lookup(path, stream)
+	const suggested = mime.getType(path) || stream
 
 	if(path.endsWith(".js")) return suggested + "; charset=utf-8"
 
-	return /^text\/[^; ]+$/.test(suggested) ? suggested + "; charset=utf-8" : suggested
+	return suggested && /^text\/[^; ]+$/.test(suggested) ? suggested + "; charset=utf-8" : suggested
 }
 
-program.option("-d, --directory [path]", "Specify alternative directory", process.cwd())
+program.option("-d, --directory [path]", "Specify alternative directory", cwd)
 program.argument("[port]", "Specify alternate port", 8000)
 
 program.action(async (port, { directory }) => {
 		port = isNumber(port) ? Number(port) : 8000
 
 		if(directory){
-			directory = isAbsolute(directory) ? normalize(directory) : resolve(process.cwd(), directory)
+			directory = isAbsolute(directory) ? normalize(directory) : resolve(cwd, directory)
 			directory = directory.replace(/"$/, "")
 
 			if(!existsSync(directory)){
 				directory = directory.replace(/`\[/g, "[").replace(/`]/g, "]")
 				if(!existsSync(directory)) return program.error("Directory doesn't exist: " + directory)
 			}
-		}else directory = process.cwd()
+		}else directory = cwd
 
 		app.get("*", (request, response) => {
 			const { ip, url: pathname, method, httpVersion } = request
@@ -143,11 +149,13 @@ program.action(async (port, { directory }) => {
 					})
 				})
 			}else{
-				const mimeType = MimeType(path)
+				const mimeType = GetMimeType(path)
 				const isStream = mimeType === "application/octet-stream"
 
 				response.sendFile(path, {
-					acceptRanges: stats.size > 3145728, // 3 MegaBytes
+					acceptRanges: isStream ||
+						stats.size > 3 * 2 ** 20 || // 3 MegaBytes
+						/^(?:video|image|audio)\//.test(mimeType),
 					lastModified: false,
 					cacheControl: false,
 					dotfiles: "allow",

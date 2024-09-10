@@ -25,6 +25,6 @@ Options:
 ### Installation
 
 ```
-npm install --omit=optional
+npm install --omit=dev
 npm link
 ```
