@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { join, normalize, basename, parse, isAbsolute, resolve, dirname } from "path"
+import { join, normalize, basename, parse, isAbsolute, resolve, dirname, relative, sep } from "path"
 import { readdirSync, existsSync, statSync, readFileSync } from "fs"
 import { fileURLToPath } from "url"
 import { program } from "commander"
@@ -43,23 +43,32 @@ function addZero(number){
 }
 
 /** @param {string | number | Date} [value] */
-function GetFormattedDate(value){
+function getFormattedDate(value){
 	const date = value ? new Date(value) : new Date()
 	const day = date.getDate()
 	const month = date.getMonth() + 1
 	const year = date.getFullYear()
 	const hour = date.getHours()
 	const min = date.getMinutes()
-	const ms = Math.round(date.getMilliseconds() / 10)
+	const sec = date.getSeconds()
 
 	const dateString = [day, month, year].map(addZero).join("/")
-	const timeString = [hour, min, ms].map(addZero).join(":")
+	const timeString = [hour, min, sec].map(addZero).join(":")
 
 	return dateString + " " + timeString
 }
 
+/**
+ * @param {string} root Absolute path of the served directory
+ * @param {string} path Absolute path to check
+ */
+function isInsideDirectory(root, path){
+	const relativePath = relative(root, path)
+	return relativePath === "" || (!isAbsolute(relativePath) && relativePath !== ".." && !relativePath.startsWith(".." + sep))
+}
+
 /** @param {string} path */
-function GetMimeType(path){
+function getMimeType(path){
 	const { ext, name } = parse(path)
 	const text = "text/plain; charset=utf-8"
 	const stream = "application/octet-stream"
@@ -88,10 +97,11 @@ function GetMimeType(path){
 	return suggested && /^text\/[^; ]+$/.test(suggested) ? suggested + "; charset=utf-8" : suggested
 }
 
-program.option("-d, --directory [path]", "Specify alternative directory", cwd)
+program.option("-d, --directory <path>", "Specify alternative directory (default: current directory)")
+program.option("--host <address>", "Specify the address to listen on (use 127.0.0.1 to accept only connections from this machine)", "0.0.0.0")
 program.argument("[port]", "Specify alternate port", 8000)
 
-program.action(async (port, { directory }) => {
+program.action(async (port, { directory, host }) => {
 		port = isNumber(port) ? Number(port) : 8000
 
 		if(directory){
@@ -108,14 +118,14 @@ program.action(async (port, { directory }) => {
 			const { ip, url: pathname, method, httpVersion } = request
 			const userAgent = request.header("user-agent")
 			const range = request.header("range")
-			const date = GetFormattedDate()
+			const date = getFormattedDate()
 
 			/**
 			 * @param {number} status Response status
 			 * @param {string} [error] Request error message
 			 * @param {string | boolean} [range] Requested range
 			 */
-			function LogMessage(status, error, range){
+			function logMessage(status, error, range){
 				status = status || 500
 				let message = `${ip} - ${date} - ${userAgent} - "${method} ${pathname} HTTP/${httpVersion}" ${status}`
 
@@ -131,11 +141,26 @@ program.action(async (port, { directory }) => {
 				console.log(message)
 			}
 
-			const url = new URL(pathname, `http://${request.header("host")}`)
-			const urlPath = decodeURIComponent(url.pathname).replace(/\/+$/, "/")
-			const path = join(directory, urlPath.substring(1))
+			const host = request.header("host")
+			if(!host) return logMessage(400, "Missing Host header")
 
-			if(!existsSync(path)) return LogMessage(404, "Path does not exist")
+			let urlPath
+
+			try{
+				const url = new URL(pathname, `http://${host}`)
+				urlPath = decodeURIComponent(url.pathname).replace(/\/+$/, "/")
+			}catch{
+				return logMessage(400, "Malformed URL or Host header")
+			}
+
+			if(urlPath.includes("\0")) return logMessage(400, "Invalid character in path")
+			if(urlPath.includes("\\")) return logMessage(403, "Backslashes are not allowed in the path")
+
+			const path = join(directory, urlPath)
+
+			if(!isInsideDirectory(directory, path)) return logMessage(403, "Path is outside the served directory")
+
+			if(!existsSync(path)) return logMessage(404, "Path does not exist")
 
 			const stats = statSync(path)
 			const isDirectory = stats.isDirectory()
@@ -149,7 +174,7 @@ program.action(async (port, { directory }) => {
 					})
 				})
 			}else{
-				const mimeType = GetMimeType(path)
+				const mimeType = getMimeType(path)
 				const isStream = mimeType === "application/octet-stream"
 
 				response.sendFile(path, {
@@ -169,7 +194,9 @@ program.action(async (port, { directory }) => {
 				})
 			}
 
-			LogMessage(response.statusCode || 200, undefined, !isDirectory && range?.split?.("=").pop())
+			response.once("finish", () => {
+				if(response.statusCode < 400) logMessage(response.statusCode, undefined, !isDirectory && range?.split?.("=").pop())
+			})
 		})
 
 		app.use(/** @type {express.ErrorRequestHandler} */ (error, request, response, next) => {
@@ -178,11 +205,11 @@ program.action(async (port, { directory }) => {
 			 * @param {string} [error] Request error message
 			 * @param {string | boolean} [range] Requested range
 			 */
-			function LogMessage(status, error, range){
+			function logMessage(status, error, range){
 				status = status || 500
 
 				const { ip, url, method, httpVersion } = request
-				const date = GetFormattedDate()
+				const date = getFormattedDate()
 
 				let message = `${ip} - ${date} - "${method} ${url} HTTP/${httpVersion}" ${status}`
 
@@ -205,7 +232,7 @@ program.action(async (port, { directory }) => {
 
 			if(error instanceof Error){
 				const { status, message } = error
-				LogMessage(status, message)
+				logMessage(status, message)
 				response.status(status)
 				response.end()
 			}else if(typeof error === "number"){
@@ -214,9 +241,9 @@ program.action(async (port, { directory }) => {
 			}else next(error)
 		})
 
-		const server = app.listen(port)
+		const server = app.listen(port, host)
 
-		server.on("listening", () => console.log(`Listening at ${port}`))
+		server.on("listening", () => console.log(`Listening at http://${host.includes(":") ? `[${host}]` : host}:${port}`))
 		server.on("error", console.error)
 	})
 

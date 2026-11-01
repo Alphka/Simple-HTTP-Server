@@ -8,14 +8,13 @@ html(lang="en")
 	body
 		h1 Directory listing for #{directory}
 		hr
+		- const encodePath = path => path.split("/").map(encodeURIComponent).join("/")
+		- const baseUrl = encodePath(directory).replace(/\/*$/, "/")
 		ul
 			if files.length
 				each file in files
 					li
-						if directory.endsWith("/")
-							a(href=(directory + file))= file
-						else
-							a(href=(directory + "/" + encodeURIComponent(file)))= file
+						a(href=(baseUrl + encodePath(file)))= file
 			else
 				li No files in directory
 		hr
