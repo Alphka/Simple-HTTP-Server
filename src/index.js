@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { join, normalize, basename, parse, isAbsolute, resolve, dirname, relative, sep } from "path"
-import { readdirSync, existsSync, statSync, readFileSync } from "fs"
+import { basename, dirname, isAbsolute, join, normalize, parse, relative, resolve, sep } from "path"
+import { existsSync, readdirSync, readFileSync, statSync } from "fs"
 import { fileURLToPath } from "url"
 import { program } from "commander"
 import express from "express"

@@ -1,19 +1,21 @@
 // cspell:ignore csecret fsecret fsite
-import { describe, it, before, after } from "node:test"
-import assert from "node:assert/strict"
-import { spawn } from "node:child_process"
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs"
-import { createServer, request } from "node:http"
-import { connect } from "node:net"
+
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { after, before, describe, it } from "node:test"
 import { networkInterfaces, tmpdir } from "node:os"
-import { join, dirname } from "node:path"
+import { createServer, request } from "node:http"
+import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { connect } from "node:net"
+import { spawn } from "node:child_process"
+import assert from "node:assert/strict"
 
 const entry = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "index.js")
 
 function getFreePort(){
 	return new Promise((resolve, reject) => {
 		const server = createServer()
+
 		server.once("error", reject)
 		server.listen(0, "127.0.0.1", () => {
 			const { port } = /** @type {import("node:net").AddressInfo} */ (server.address())
